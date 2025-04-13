@@ -1,0 +1,24 @@
+[package]
+name = "eshop-payments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8.1"
+serde_json = "1.0.139"
+tracing-subscriber = { version = "0.3.19", features = ["json"]}
+tracing = "0.1.41"
+amqprs = "2.1.0"
+tower-http = { version = "0.6.2", features = ["full"] }
+tower = "0.5.2"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.13.1", features = ["v4"]}
+mongodb = "3.2.1"
+futures-util = "0.3"
+dotenv = "0.15.0"
+reqwest = "0.12.15"
+jwks = "0.4.0"
+jsonwebtoken = "9.3.1"
+prometheus = "0.14.0"
+axum-prometheus = "0.8.0"
