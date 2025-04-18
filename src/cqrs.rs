@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tracing::{event, Level};
 
-use crate::{domain::{Payment, PaymentStatus}, dtos::{CreateCheckoutSessionResponseDto, LineItemRequestDto, Response}, paymentprocessors::PaymentProcessor};
+use crate::{domain::{Payment, PaymentStatus}, dtos::{CreateCheckoutSessionResponseDto, EmptyResponse, LineItemRequestDto, Response}, paymentprocessors::{self, PaymentProcessor}};
 
 // traits
 pub trait Command{}
@@ -22,6 +22,14 @@ pub struct CreateCheckoutSessionCommand {
     pub line_items: Vec<LineItemRequestDto>
 }
 impl Command for CreateCheckoutSessionCommand{}
+
+#[derive(Serialize, Deserialize)]
+pub struct CreateProductPricingCommand {
+    pub product_id: String,
+    pub product_name: String,
+    pub product_price: f32,
+}
+impl Command for CreateProductPricingCommand{}
 
 pub struct CreateCheckoutSessionCommandHandler {
     payment_processor: Arc<dyn PaymentProcessor + Send + Sync>
@@ -59,6 +67,40 @@ impl CommandHandler<CreateCheckoutSessionCommand, CreateCheckoutSessionResponseD
             Err(e) => {
                 event!(Level::WARN, "Error occurred when creating checkout session: {}", e);
                 return Err(format!("Error occurred when creating checkout session: {}", e));
+            }
+        }
+    }
+}
+
+pub struct CreateProductPricingCommandHandler {
+    payment_processor: Arc<dyn PaymentProcessor + Send + Sync>,
+}
+
+impl CreateProductPricingCommandHandler {
+    pub fn new(payment_processor: Arc<dyn PaymentProcessor + Send + Sync>) -> Self {
+        CreateProductPricingCommandHandler { 
+            payment_processor: payment_processor,
+        }
+    }
+}
+
+impl CommandHandler<CreateProductPricingCommand, EmptyResponse> for CreateProductPricingCommandHandler {
+    async fn handle(&self, input: &CreateProductPricingCommand) -> Result<EmptyResponse, String> {
+        match self.payment_processor.create_product(input.product_id.clone(), input.product_name.clone()).await {
+            Ok(()) => {
+                match self.payment_processor.create_product_pricing(input.product_id.clone(), String::from("usd"), input.product_price as i32).await {
+                    Ok(()) => {
+                        Ok(EmptyResponse {})
+                    },
+                    Err(e) => {
+                        event!(Level::WARN, "Error occurred when creating Pricing in payment processor: {}", e);
+                        return Err(format!("Error occurred when creating Pricing in payment processor: {}", e));
+                    }
+                }
+            },
+            Err(e) => {
+                event!(Level::WARN, "Error occurred when creating Product in payment processor: {}", e);
+                return Err(format!("Error occurred when creating Product in payment processor: {}", e));
             }
         }
     }

@@ -3,9 +3,10 @@ use std::sync::Arc;
 use amqprs::{callbacks::{DefaultChannelCallback, DefaultConnectionCallback}, channel::{BasicConsumeArguments, Channel, ExchangeDeclareArguments, ExchangeType, QueueBindArguments, QueueDeclareArguments}, connection::{Connection, OpenConnectionArguments}, consumer::AsyncConsumer, BasicProperties, Deliver};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Notify;
 use tracing::{event, Level};
 
-use crate::state::AppState;
+use crate::{cqrs::{CommandHandler, CreateProductPricingCommand}, state::AppState};
 
 pub static PRODUCT_CREATED_QUEUE_NAME: &str = "product.created";
 
@@ -34,7 +35,9 @@ impl RabbitMqInitializationInfo {
 #[derive(Serialize, Deserialize)]
 pub enum Event {
     ProductCreatedEvent {
-        product_id: String
+        id: String,
+        name: String,
+        price: f32
     },
 }
 
@@ -104,6 +107,9 @@ impl MessageBroker for RabbitMqMessageBroker {
                     },
                     x => event!(Level::INFO, "event {} is not valid to subscribe to", x)
                 }
+
+                let guard = Notify::new();
+                guard.notified().await;
             },
             Err(e) => {
                 panic!();
@@ -139,8 +145,14 @@ impl AsyncConsumer for ProductCreatedEventHandler {
         match serde_json::from_str::<Event>(&raw_event) {
             Ok(deserialized_event) => {
                 match deserialized_event {
-                    Event::ProductCreatedEvent { product_id } => {
+                    Event::ProductCreatedEvent { id, name, price } => {
+                        let create_product_pricing_command = CreateProductPricingCommand {
+                            product_id: id,
+                            product_name: name,
+                            product_price: price,
+                        };
 
+                        let _ = self.state.create_product_pricing_command_handler.handle(&create_product_pricing_command).await;
                     },
                     _ => event!(Level::INFO, "Event not supported")
                 }

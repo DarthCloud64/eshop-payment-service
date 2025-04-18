@@ -1,14 +1,16 @@
 use std::{env, str::FromStr};
 
 use async_trait::async_trait;
-use reqwest::{header::IntoHeaderName, Url};
+use reqwest::Url;
 use tracing::{event, Level};
 
-use crate::{domain::Payment, dtos::{PaymentProcessorCreateCheckoutSessionRequestDto, PaymentProcessorCreateCheckoutSessionResponseDto, PaymentProcessorLineItemRequestDto}};
+use crate::{domain::Payment, dtos::{PaymentProcessorCreateCheckoutSessionRequestDto, PaymentProcessorCreatePricingRequestDto, PaymentProcessorCreateProductRequestDto, PaymentProcessorLineItemRequestDto}};
 
 #[async_trait]
 pub trait PaymentProcessor {
     async fn create_checkout_session(&self, payment: Payment) -> Result<Payment, String>;
+    async fn create_product(&self, product_id: String, name: String) -> Result<(), String>;
+    async fn create_product_pricing(&self, product_id: String, currency: String, unit_amount: i32) -> Result<(), String>;
 }
 
 pub struct StripePaymentProcessor {
@@ -73,5 +75,60 @@ impl PaymentProcessor for StripePaymentProcessor{
                     return Err(format!("Error occurred when sending CreateCheckoutRequest to Stripe: {}", e));
                 }
             };
+    }
+
+    async fn create_product(&self, product_id: String, name: String) -> Result<(), String> {
+        let payment_processor_create_product_request_dto = PaymentProcessorCreateProductRequestDto {
+            id: product_id,
+            name: name,
+        };
+
+        let form_url_encoded_request = serde_qs::to_string(&payment_processor_create_product_request_dto).unwrap();
+
+        let url = Url::from_str(&format!("{}/v1/products", String::from(env::var("STRIPE_API_BASE_URL").unwrap()))).unwrap();
+
+        let http_client = reqwest::Client::new();
+        match http_client.post(url)
+            .header(reqwest::header::CONTENT_TYPE, String::from("application/x-www-form-urlencoded"))
+            .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", String::from(env::var("STRIPE_API_KEY").unwrap())))
+            .body(form_url_encoded_request)
+            .send()
+            .await {
+                Ok(_) => {
+                    Ok(())
+                },
+                Err(e) => {
+                    event!(Level::WARN, "Error occurred when sending CreateProductRequest to Stripe: {}", e);
+                    return Err(format!("Error occurred when sending CreateProductRequest to Stripe: {}", e));
+                }
+            }
+    }
+
+    async fn create_product_pricing(&self, product_id: String, currency: String, unit_amount: i32) -> Result<(), String> {
+        let payment_processor_create_pricing_request_dto = PaymentProcessorCreatePricingRequestDto {
+            product: product_id,
+            currency: currency,
+            unit_amount: unit_amount * 100, // Stripe's unit amount is in cents
+        };
+
+        let form_url_encoded_request = serde_qs::to_string(&payment_processor_create_pricing_request_dto).unwrap();
+
+        let url = Url::from_str(&format!("{}/v1/prices", String::from(env::var("STRIPE_API_BASE_URL").unwrap()))).unwrap();
+
+        let http_client = reqwest::Client::new();
+        match http_client.post(url)
+            .header(reqwest::header::CONTENT_TYPE, String::from("application/x-www-form-urlencoded"))
+            .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", String::from(env::var("STRIPE_API_KEY").unwrap())))
+            .body(form_url_encoded_request)
+            .send()
+            .await {
+                Ok(_) => {
+                    Ok(())
+                },
+                Err(e) => {
+                    event!(Level::WARN, "Error occurred when sending CreateProductRequest to Stripe: {}", e);
+                    return Err(format!("Error occurred when sending CreateProductRequest to Stripe: {}", e));
+                }
+            }
     }
 }
